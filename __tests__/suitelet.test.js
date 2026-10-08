@@ -1,97 +1,79 @@
 import serverWidget from 'N/ui/serverWidget';
+import Form from 'N/ui/serverWidget/form';
+import Field from 'N/ui/serverWidget/field';
+import helloWorldSuitelet from 'SuiteScripts/services/suitelet/HelloWorld.Suitelet';
 
 jest.mock('N/ui/serverWidget');
+jest.mock('N/ui/serverWidget/form');
+jest.mock('N/ui/serverWidget/field');
 
-describe('HelloWorld Suitelet Tests', () => {
-    let mockForm;
-    let mockField;
-    let mockRequest;
-    let mockResponse;
+describe('HelloWorld Suitelet', () => {
+    let scriptContext;
 
     beforeEach(() => {
         jest.clearAllMocks();
-        
-        // Mock form and field objects
-        mockField = {
-            defaultValue: ''
-        };
-        
-        mockForm = {
-            addField: jest.fn().mockReturnValue(mockField)
-        };
-        
-        mockRequest = {
-            method: 'GET'
-        };
-        
-        mockResponse = {
-            writePage: jest.fn()
-        };
+        Field.defaultValue = undefined;
+        serverWidget.createForm.mockReturnValue(Form);
+        Form.addField.mockReturnValue(Field);
 
-        serverWidget.createForm = jest.fn().mockReturnValue(mockForm);
-        serverWidget.FieldType = {
-            INLINEHTML: 'inlinehtml'
+        scriptContext = {
+            request: { method: 'GET', parameters: {} },
+            response: { writePage: jest.fn() }
         };
     });
 
-    it('should create form with correct title', () => {
-        // Simulate the suitelet logic
-        const form = serverWidget.createForm({
-            title: 'Avera MX'
-        });
-
-        expect(serverWidget.createForm).toHaveBeenCalledWith({
-            title: 'Avera MX'
-        });
-        expect(form).toBeDefined();
+    it('exposes only the onRequest entry point', () => {
+        expect(Object.keys(helloWorldSuitelet)).toEqual(['onRequest']);
+        expect(typeof helloWorldSuitelet.onRequest).toBe('function');
     });
 
-    it('should add greeting field with correct properties', () => {
-        const form = serverWidget.createForm({ title: 'Avera MX' });
-        
-        const greetingField = form.addField({
+    it('creates the form with the Avera MX title', () => {
+        helloWorldSuitelet.onRequest(scriptContext);
+
+        expect(serverWidget.createForm).toHaveBeenCalledTimes(1);
+        expect(serverWidget.createForm).toHaveBeenCalledWith({ title: 'Avera MX' });
+    });
+
+    it('adds the greeting field as inline HTML', () => {
+        helloWorldSuitelet.onRequest(scriptContext);
+
+        expect(Form.addField).toHaveBeenCalledTimes(1);
+        expect(Form.addField).toHaveBeenCalledWith({
             id: 'greeting',
             label: 'Saludo',
             type: serverWidget.FieldType.INLINEHTML
         });
-
-        expect(form.addField).toHaveBeenCalledWith({
-            id: 'greeting',
-            label: 'Saludo',
-            type: 'inlinehtml'
-        });
-        expect(greetingField).toBeDefined();
     });
 
-    it('should set HTML content in greeting field', () => {
-        const form = serverWidget.createForm({ title: 'Avera MX' });
-        const greetingField = form.addField({
-            id: 'greeting',
-            label: 'Saludo',
-            type: serverWidget.FieldType.INLINEHTML
-        });
+    it('fills the greeting field with the Hello World markup', () => {
+        helloWorldSuitelet.onRequest(scriptContext);
 
-        const expectedHTML = `
-            <div style="text-align: center; font-family: 'Arial', sans-serif; background-color: #f0f8ff; padding: 50px; border-radius: 15px; border: 2px solid #add8e6; color: #333;">
-            <h1 style="color: #4682b4; font-size: 3em; text-shadow: 2px 2px 4px rgba(0,0,0,0.2);">Hello, World!</h1>
-            <p style="font-size: 1.2em; color: #555;">Made with ❤️ by the Avera Engineering Team.</p>
-            </div>`;
-
-        greetingField.defaultValue = expectedHTML;
-
-        expect(greetingField.defaultValue).toContain('Hello, World!');
-        expect(greetingField.defaultValue).toContain('Avera Engineering Team');
+        expect(Field.defaultValue).toContain('<h1');
+        expect(Field.defaultValue).toContain('Hello, World!');
+        expect(Field.defaultValue).toContain('Made with ❤️ by the Avera Engineering Team.');
     });
 
-    it('should write page to response', () => {
-        const scriptContext = {
-            request: mockRequest,
-            response: mockResponse
-        };
+    it('writes the created form to the response', () => {
+        helloWorldSuitelet.onRequest(scriptContext);
 
-        const form = serverWidget.createForm({ title: 'Avera MX' });
-        scriptContext.response.writePage(form);
+        expect(scriptContext.response.writePage).toHaveBeenCalledTimes(1);
+        expect(scriptContext.response.writePage).toHaveBeenCalledWith(Form);
+    });
 
-        expect(mockResponse.writePage).toHaveBeenCalledWith(form);
+    it.each(['GET', 'POST'])('renders the same page for %s requests', (method) => {
+        scriptContext.request.method = method;
+
+        helloWorldSuitelet.onRequest(scriptContext);
+
+        expect(scriptContext.response.writePage).toHaveBeenCalledWith(Form);
+    });
+
+    it('propagates errors raised while building the form', () => {
+        serverWidget.createForm.mockImplementation(() => {
+            throw new Error('SSS_MISSING_REQD_ARGUMENT');
+        });
+
+        expect(() => helloWorldSuitelet.onRequest(scriptContext)).toThrow('SSS_MISSING_REQD_ARGUMENT');
+        expect(scriptContext.response.writePage).not.toHaveBeenCalled();
     });
 });
